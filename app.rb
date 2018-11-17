@@ -4,14 +4,16 @@ require 'scanf'
 
 config = [
     {
-        "name" => "Date",
+        "name" => "date",
         "fail_cooldown" => 2,
-        "processes" => 2,
+        "processes" => 1,
         "autostart" => true,
+        "exit_signal" => "TERM",
         "max_failures" => 2,
-        "cmd" => "pwd && date +%s && env | grep LOL && sleep 1 && exit 1",
+        "exit_timeout" => 3,
+        "cmd" => "pwd && date +%s && env | grep LOL && sleep 1.5 && exit 2",
         "expected_status" => [0, 2],
-        "restart" => "never",
+        "restart" => "unexpected",
         "stdout" => "out",
         "start_minimum_time" => 0.5,
         "working_dir" => "/dev",
@@ -51,7 +53,9 @@ class Job
     end
 
     def is_expected_exit?
-        @state != "abandonned" && @state != "early_exit" && @config["expected_status"].any? { |c| @exit_status == c }
+        if (@state == "started" && @state != "abandonned" && @state != "early_exit")
+            @config["expected_status"].any? { |c| @exit_status == c }
+        end
     end
 
     def start
@@ -81,9 +85,15 @@ class Job
     end
 
     def soft_stop
+        Process.kill(@config["exit_signal"], @pid) if !@pid.nil?
+        Thread.new do
+            sleep @config["exit_timeout"] || 1
+            force_stop
+        end
     end
 
     def force_stop
+        Process.kill("KILL", @pid) if !@pid.nil?
     end
 
     def to_s
@@ -100,7 +110,7 @@ class Job
 
     def should_restart?
         if @config["restart"] == "always"
-            true
+            @failures < @config["max_failures"]
         elsif @config["restart"] == "on_success" && is_expected_exit?
             @failures < @config["max_failures"]
         elsif @config["restart"] == "unexpected" && !is_expected_exit?
@@ -125,12 +135,12 @@ class Job
             sleep @config["fail_cooldown"]
             @pid = nil
             start
-        elsif is_expected_exit?
-            @pid = nil
-            @state = "completed"
-        else
+        elsif !is_expected_exit?
             @pid = nil
             @state = "abandonned"
+        else
+            @pid = nil
+            @state = "completed"
         end
     end
 end
@@ -161,9 +171,6 @@ class JobManager
     end
     
     def status
-        puts "##### ##### #####"
-        puts "##### ##### #####"
-        puts "##### ##### #####"
         @jobs.each do |name, processes|
             puts "\nJob: #{name}\n"
             puts processes.map(&:to_s)
@@ -266,12 +273,24 @@ jm = JobManager.new(config)
 
 
 Thread.new do
-    loop do
-        jm.print_status
-        sleep 0.5
+    begin
+        loop do
+            jm.print_status
+            sleep 0.5
+        end
+    rescue Exception => e
+        puts "EXCEPTION: #{e.inspect}"
+        puts "MESSAGE: #{e.message}"
+        Process.exit
     end
 end
 
+begin
 loop do
     jm.read_line
+end
+rescue Exception => e
+    puts "EXCEPTION: #{e.inspect}"
+    puts "MESSAGE: #{e.message}"
+    Process.exit
 end
