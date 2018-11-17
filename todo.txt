@@ -1,0 +1,20 @@
+job manager
++ start jobs
++ keep jobs alive
++ keep track of job status in real time
+
+job config
++ command
++ number of process
++ autostart
++ restart : "always" "never" "unexpected_status"
++ expected exit status
++ success time
++ max restart before aborting
++ graceful exit signal
++ graceful exit timeout
++ stderr
++ stdout
++ env
++ working directory
++ umask

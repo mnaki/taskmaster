@@ -1,0 +1,19 @@
+programs:
+  echo:
+    cmd: "echo lmao && echo xd"
+    umask: 077
+    numprocs: 2
+    workingdir: 
+    autostart: 
+    autorestart: 
+    exitcodes:
+      - 0
+      - 2
+    startretries: 2
+    starttime: 5
+    stopsignal: KILL 
+    stoptime: 5
+    stdout: /dev/stdout
+    stderr: /dev/stderr
+    env:
+      VAR: VAL
