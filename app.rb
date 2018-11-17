@@ -11,7 +11,7 @@ config = [
         "exit_signal" => "TERM",
         "max_failures" => 2,
         "exit_timeout" => 3,
-        "cmd" => "pwd && date +%s && env | grep LOL && sleep 1.5 && exit 2",
+        "cmd" => "pwd && date +%s && env | grep LOL && sleep 2 && exit 2",
         "expected_status" => [0, 2],
         "restart" => "unexpected",
         "stdout" => "out",
@@ -53,17 +53,31 @@ class Job
     end
 
     def is_expected_exit?
-        if (@state == "started" && @state != "abandonned" && @state != "early_exit")
+        if @state == "abandonned"
+            false
+        elsif @state == "early_exit"
+            false
+        elsif @state == "terminated"
+            true
+        elsif @state == "exit"
+            true
+        elsif @state == "started"
             @config["expected_status"].any? { |c| @exit_status == c }
         end
     end
 
     def start
         @thread = Thread.new do
-            @state = "starting"
-            sleep @config["start_minimum_time"]
-            if is_running?
-                @state = "started"
+            begin
+                @state = "starting"
+                sleep @config["start_minimum_time"]
+                if is_running?
+                    @state = "started"
+                end
+            rescue Exception => e
+                puts "EXCEPTION: #{e.inspect}"
+                puts "MESSAGE: #{e.message}"
+                Process.exit
             end
         end
         @pid = Process.fork do
@@ -85,15 +99,27 @@ class Job
     end
 
     def soft_stop
+        @state = "exit"
+        @thread.exit if @thread
         Process.kill(@config["exit_signal"], @pid) if !@pid.nil?
         Thread.new do
-            sleep @config["exit_timeout"] || 1
-            force_stop
+            begin
+                sleep @config["exit_timeout"] || 1
+                force_stop if is_running?
+            rescue Exception => e
+                puts "EXCEPTION: #{e.inspect}"
+                puts "MESSAGE: #{e.message}"
+                Process.exit
+            end
         end
     end
 
     def force_stop
-        Process.kill("KILL", @pid) if !@pid.nil?
+        if !@pid.nil?
+            @state = "terminated"
+            @thread.exit if @thread
+            Process.kill("KILL", @pid)
+        end
     end
 
     def to_s
@@ -121,26 +147,28 @@ class Job
     end
     
     def on_exit
-        @exit_status = $?.exitstatus
-        @thread.exit
-        if @state != "started"
-            @state = "early_exit"
-        end
-        
-        if !is_expected_exit?
-            @failures += 1
-        end
+        if @state != "terminated" && @state != "exit"
+            @exit_status = $?.exitstatus
+            @thread.exit
+            if @state != "started"
+                @state = "early_exit"
+            end
+            
+            if !is_expected_exit?
+                @failures += 1
+            end
 
-        if should_restart?
-            sleep @config["fail_cooldown"]
-            @pid = nil
-            start
-        elsif !is_expected_exit?
-            @pid = nil
-            @state = "abandonned"
-        else
-            @pid = nil
-            @state = "completed"
+            if should_restart?
+                sleep @config["fail_cooldown"]
+                @pid = nil
+                start
+            elsif !is_expected_exit?
+                @pid = nil
+                @state = "abandonned"
+            else
+                @pid = nil
+                @state = "success"
+            end
         end
     end
 end
@@ -175,7 +203,6 @@ class JobManager
             puts "\nJob: #{name}\n"
             puts processes.map(&:to_s)
         end
-        puts "---- ---- ----"
     end
 
     def each(job_name = nil)
@@ -183,7 +210,13 @@ class JobManager
             processes.flat_map do |p|
                 if (job_name.nil?) || (p.config["name"] == job_name)
                     Thread.new do
-                        yield p
+                        begin
+                            yield p
+                        rescue Exception => e
+                            puts "EXCEPTION: #{e.inspect}"
+                            puts "MESSAGE: #{e.message}"
+                            Process.exit
+                        end
                     end
                     p
                 end
@@ -247,7 +280,7 @@ class JobManager
     end
 
     def process_line
-        cmd, name = @line.scanf('%s %50[^\n]')
+        cmd, name = @line.scanf('%s %s\n')
         name = name&.chomp&.strip || ""
         case cmd
         when "start"
