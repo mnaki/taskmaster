@@ -71,23 +71,24 @@ class Job
             end
         end
         @pid = Process.fork do
-            @log.info "Fork PID = #{Process.pid}"
+            pid = Process.pid
+            @log.info "Fork PID = #{pid}"
 
             @exit_status = nil
 
-            @log.info "Setting env"
+            @log.info "(pid=#{pid}) - Setting env"
             if @config["env"]
                 @config["env"].map do |var, val|
                     ENV[var.to_s] = val.to_s
                 end
             end
 
-            @log.info "Setting stdout"
+            @log.info "(pid=#{pid}) - Setting stdout"
             $stdout.reopen(@config["stdout"], "w") if @config["stdout"]
-            @log.info "Setting stdin"
+            @log.info "(pid=#{pid}) - Setting stdin"
             $stderr.reopen(@config["stderr"], "w") if @config["stderr"]
             
-            @log.info "Setting working_dir"
+            @log.info "(pid=#{pid}) - Setting working_dir"
             Dir.chdir(@config["working_dir"])
 
             umask = @config["umask"]
@@ -96,12 +97,12 @@ class Job
             elsif umask.kind_of? Numeric
                 umask = umask
             end
-            @log.info "Setting umask"
+            @log.info "(pid=#{pid}) - Setting umask"
             File.umask(umask)
 
-            @log.info "Exec'ing"
+            @log.info "(pid=#{pid}) - Exec'ing"
             exec("bash", "-c", @config["cmd"])
-            @log.error "Exec failed. Exiting with status 1"
+            @log.error "(pid=#{pid}) - Exec failed. Exiting with status 1"
             exit(1)
         end
         @log.info "Waiting for process to finish"
