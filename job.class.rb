@@ -1,3 +1,4 @@
+require 'logger'
 
 class Job
     
@@ -11,6 +12,9 @@ class Job
     )
 
     def initialize(config)
+        @log = Logger.new("log.#{config['name']}.txt") 
+        @log.info "Initializing Job #{config['name']}"
+
         @config = config
 
         @thread = nil
@@ -22,6 +26,7 @@ class Job
         @state = nil
 
         if config["autostart"] == true
+            @log.info "Autostart enabled"
             Thread.new do
                 start
             end
@@ -51,38 +56,62 @@ class Job
     end
 
     def start
+        @log.info "Starting process thread"
         @thread = Thread.new do
             begin
                 @state = "starting"
+                @log.info "Starting"
                 sleep @config["start_minimum_time"]
                 if is_running?
                     @state = "started"
+                    @log.info "Process started successfully"
                 end
             rescue Exception => e
-                puts "EXCEPTION: #{e.inspect}"
-                puts "ZZZ MESSAGE: #{e.message}"
-                Process.exit
+                @log.error "Error #{e.message}"
             end
         end
         @pid = Process.fork do
+            @log.info "Fork PID = #{Process.pid}"
+
             @exit_status = nil
+
+            @log.info "Setting env"
             if @config["env"]
                 @config["env"].map do |var, val|
                     ENV[var.to_s] = val.to_s
                 end
             end
+
+            @log.info "Setting stdout"
             $stdout.reopen(@config["stdout"], "w") if @config["stdout"]
+            @log.info "Setting stdin"
             $stderr.reopen(@config["stderr"], "w") if @config["stderr"]
+            
+            @log.info "Setting working_dir"
             Dir.chdir(@config["working_dir"])
-            File.umask(@config["umask"].to_i(8))
+
+            umask = @config["umask"]
+            if umask.kind_of? String
+                umask = umask.to_i(8)
+            elsif umask.kind_of? Numeric
+                umask = umask
+            end
+            @log.info "Setting umask"
+            File.umask(umask)
+
+            @log.info "Exec'ing"
             exec("bash", "-c", @config["cmd"])
+            @log.error "Exec failed. Exiting with status 1"
             exit(1)
         end
+        @log.info "Waiting for process to finish"
         Process.wait(@pid)
+        @log.info "Process finished"
         on_exit
     end
 
     def restart
+        @log.info "restart"
         @state = "exiting"
         @thread.exit if @thread
         Process.kill(@config["exit_signal"], @pid) if !@pid.nil?
@@ -101,6 +130,7 @@ class Job
     end
 
     def soft_stop
+        @log.info "soft_stop"
         @state = "exiting"
         @thread.exit if @thread
         Process.kill(@config["exit_signal"], @pid) if !@pid.nil?
@@ -117,6 +147,7 @@ class Job
     end
 
     def force_stop
+        @log.info "force_stop"
         if !@pid.nil?
             @state = "terminated"
             @thread.exit if @thread
@@ -149,14 +180,19 @@ class Job
     end
     
     def on_exit
+        @log.info "Starting post-exit procedure"
         if @state != "terminated" && (@state != "exit" || @state != "exiting")
             @exit_status = $?.exitstatus
+            @log.info "exit_status = #{exit_status}"
+
             @thread.exit
+
             if @state != "started"
                 @state = "early_exit"
             end
             
             if !is_expected_exit?
+                @log.info "Incrementing failure"
                 @failures += 1
             end
 
@@ -171,6 +207,8 @@ class Job
                 @pid = nil
                 @state = "success"
             end
+
+            @log.info "state = #{@state}"
         end
     end
 

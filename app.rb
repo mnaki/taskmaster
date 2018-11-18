@@ -1,8 +1,5 @@
 #!/usr/bin/ruby
 
-require 'scanf'
-require 'yaml'
-
 require './job_manager.class.rb'
 require './job.class.rb'
 
@@ -28,7 +25,9 @@ debug_config = [
     }
 ]
 
-jm = JobManager.new(debug_config)
+# jm = JobManager.new(debug_config)
+jm = JobManager.new([])
+jm.reload
 
 loop do
     jm.read_line

@@ -1,19 +1,19 @@
 ---
 - name: hello
   fail_cooldown: 3
-  processes: 2
+  processes: 4
   autostart: true
   exit_signal: TERM
   max_failures: 2
   exit_timeout: 3
-  cmd: pwd && date +%s && env | grep LOL && sleep 2 && exit 2
+  cmd: pwd && umask && env | grep LOL && sleep 2 && exit 2
   expected_status:
   - 0
   - 2
-  restart: unexpected
+  restart: always
   stdout: out
   start_minimum_time: 0.5
   working_dir: "/dev"
-  umask: '077'
+  umask: 067
   env:
     LOL: OK

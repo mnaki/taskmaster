@@ -1,10 +1,17 @@
+require 'yaml'
+require 'logger'
+
 class JobManager
 
     def initialize(config)
+        @log = Logger.new('log.txt') 
+        @log.info "Initializing JobManager"
         @jobs = {}
         config.each do |c|
+            @log.info "Creating job #{c['name']}"
             @jobs[c["name"]] = []
             c["processes"].times do
+                @log.info "Adding new process to job #{c['name']}"
                 @jobs[c["name"]] << Job.new(c)
             end
         end
@@ -15,6 +22,7 @@ class JobManager
     
     def status
         @jobs.each do |name, processes|
+            @log.info "Printing status for #{name}"
             puts "[Job = #{name}]\n"
             puts "\n# Config\n"
             puts processes.first.config_to_s
@@ -32,9 +40,7 @@ class JobManager
                         begin
                             yield p
                         rescue Exception => e
-                            puts "EXCEPTION: #{e.inspect}"
-                            puts "BBB MESSAGE: #{e.message}"
-                            Process.exit
+                            @log.error "Error #{e.message}"
                         end
                     end
                     p
@@ -44,37 +50,54 @@ class JobManager
     end
 
     def start_job(job_name = nil)
+        @log.info "start_job #{job_name}"
         each(job_name) { |p| p.start }
     end
 
     def stop_job(job_name = nil)
+        @log.info "stop_job #{job_name}"
         each(job_name) { |p| p.soft_stop }
     end
     
     def force_stop_job(job_name = nil)
+        @log.info "force_stop_job #{job_name}"
         each(job_name) { |p| p.force_stop }
     end
     
     def restart_job(job_name = nil)
+        @log.info "restart_job #{job_name}"
         each(job_name) { |p| p.restart }
     end
 
     def update_job(job_name = nil, config)
-        each(job_name) { |p|
-            if p.config != config
-                p.config = config
-                scale_job(job_name, config["processes"])
+        @log.info "update_job #{job_name}"
+        if @jobs[job_name].nil?
+            @log.info "New job detected (#{job_name}). Adding..."
+            @jobs[job_name] = [Job.new(config)]
+        else
+            @log.info "Job already exists (#{job_name}). Updating according to changes..."
+            each(job_name) do |p|
+                if p.config != config
+                    @log.info "Change detected. Updating"
+                    p.config = config
+                    @log.info "#{config.to_s}"
+                    scale_job(job_name, config["processes"])
+                else
+                    @log.info "Identical config. Not updating"
+                end
             end
-        }
+        end
     end
 
     def set_config_var(job_name, var, val)
+        @log.info "set_config_var #{job_name}, (#{var} = #{val})"
         each(job_name) do |j|
             j.config[var] = val
         end
     end
 
     def save_config
+        @log.info "save_config"
         new_config = []
         @jobs.each do |name, processes|
             new_config << processes.first.config
@@ -85,6 +108,7 @@ class JobManager
     end
 
     def reload
+        @log.info "reload"
         conf = YAML.load_file('config.yml')
         conf.each do |c|
             update_job(c["name"], c)
@@ -92,6 +116,8 @@ class JobManager
     end
 
     def scale_job(job_name, num)
+        @log.info "scale_job #{job_name}, #{num}"
+        num = num.to_i
         
         if num == 0
             return
@@ -102,22 +128,28 @@ class JobManager
             additional_process_num = num - processes.size
 
             if additional_process_num > 0
+                @log.info "Scaling up job by #{additional_process_num} additional processes..."
                 additional_process_num.times do
+                    @log.info "...Spawning"
                     processes << Job.new(processes.first.config)
                 end
             elsif additional_process_num < 0
+                @log.info "Scaling down job by removing #{-additional_process_num} processes..."
                 processes_to_remove = processes.pop(-(additional_process_num))
             end
 
             processes_to_remove.each do |process|
+                @log.info "...Killing"
                 process.force_stop
             end
         end
     end
 
     def read_line
+        @log.info "Reading line..."
         print '#> '
         @line = STDIN.gets&.chomp&.strip || ""
+        @log.info "line = #{@line}"
         if @line == "!!"
             @line = @last_line
         end
@@ -126,7 +158,9 @@ class JobManager
     end
 
     def process_line
+        @log.info "Processing line"
         args = @line.chomp.strip.split " "
+        @log.info "Args [#{args.join(', ')}]"
         case args[0]
         when "start"
             start_job(args[1])
@@ -147,7 +181,8 @@ class JobManager
         when "status"
             status
         else
-          @line = "'#{@line}' is not a valid command"
+            @log.info "Invalid command"
+            @line = "'#{@line}' is not a valid command"
         end
     end
 
