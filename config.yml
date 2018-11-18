@@ -1,19 +1,19 @@
-programs:
-  echo:
-    cmd: "echo lmao && echo xd"
-    umask: 077
-    numprocs: 2
-    workingdir: 
-    autostart: 
-    autorestart: 
-    exitcodes:
-      - 0
-      - 2
-    startretries: 2
-    starttime: 5
-    stopsignal: KILL 
-    stoptime: 5
-    stdout: /dev/stdout
-    stderr: /dev/stderr
-    env:
-      VAR: VAL
+---
+- name: hello
+  fail_cooldown: 3
+  processes: 2
+  autostart: true
+  exit_signal: TERM
+  max_failures: 2
+  exit_timeout: 3
+  cmd: pwd && date +%s && env | grep LOL && sleep 2 && exit 2
+  expected_status:
+  - 0
+  - 2
+  restart: unexpected
+  stdout: out
+  start_minimum_time: 0.5
+  working_dir: "/dev"
+  umask: '077'
+  env:
+    LOL: OK

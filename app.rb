@@ -1,6 +1,7 @@
 #!/usr/bin/ruby
 
 require 'scanf'
+require 'yaml'
 
 config = [
     {
@@ -44,6 +45,12 @@ class Job
         @pid = nil
         @exit_status = nil
         @state = nil
+
+        if config["autostart"] == true
+            Thread.new do
+                start
+            end
+        end
     end
 
     def is_running?
@@ -78,7 +85,7 @@ class Job
                 end
             rescue Exception => e
                 puts "EXCEPTION: #{e.inspect}"
-                puts "MESSAGE: #{e.message}"
+                puts "ZZZ MESSAGE: #{e.message}"
                 Process.exit
             end
         end
@@ -112,7 +119,7 @@ class Job
                 start
             rescue Exception => e
                 puts "EXCEPTION: #{e.inspect}"
-                puts "MESSAGE: #{e.message}"
+                puts "WWW MESSAGE: #{e.message}"
                 Process.exit
             end
         end
@@ -128,7 +135,7 @@ class Job
                 force_stop if is_running?
             rescue Exception => e
                 puts "EXCEPTION: #{e.inspect}"
-                puts "MESSAGE: #{e.message}"
+                puts "AAA MESSAGE: #{e.message}"
                 Process.exit
             end
         end
@@ -206,7 +213,6 @@ class JobManager
                 @jobs[c["name"]] << Job.new(c)
             end
         end
-        start_job
 
         @refresh = true
         @line = ""
@@ -232,7 +238,7 @@ class JobManager
                             yield p
                         rescue Exception => e
                             puts "EXCEPTION: #{e.inspect}"
-                            puts "MESSAGE: #{e.message}"
+                            puts "BBB MESSAGE: #{e.message}"
                             Process.exit
                         end
                     end
@@ -259,12 +265,34 @@ class JobManager
     end
 
     def update_job(job_name = nil, config)
-        each(job_name) { |p| p.config = config }
+        each(job_name) { |p|
+            if p.config != config
+                p.config = config
+                scale_job(job_name, config["processes"])
+            end
+        }
     end
 
     def set_config_var(job_name, var, val)
         each(job_name) do |j|
             j.config[var] = val
+        end
+    end
+
+    def save_config
+        new_config = []
+        @jobs.each do |name, processes|
+            new_config << processes.first.config
+        end
+        File.open("config.yml", 'w') do |file|
+            file.write(new_config.to_yaml)
+        end
+    end
+
+    def reload
+        conf = YAML.load_file('config.yml')
+        conf.each do |c|
+            update_job(c["name"], c)
         end
     end
 
@@ -337,14 +365,14 @@ class JobManager
             force_stop_job(args[1])
         when "restart"
             restart_job(args[1])
-        when "update"
-            puts "Unimplemented"
-            exit
-            update_job(args[1], args[2])
         when "scale"
             scale_job(args[1], args[2].to_i)
         when "set"
             set_config_var(args[1], args[2], args[3])
+        when "save"
+            save_config
+        when "reload"
+            reload
         else
           @line = "'#{@line}' is not a valid command"
         end
@@ -363,17 +391,11 @@ Thread.new do
         end
     rescue Exception => e
         puts "EXCEPTION: #{e.inspect}"
-        puts "MESSAGE: #{e.message}"
+        puts "XXX MESSAGE: #{e.message}"
         Process.exit
     end
 end
 
-begin
-    loop do
-        jm.read_line
-    end
-rescue Exception => e
-    puts "EXCEPTION: #{e.inspect}"
-    puts "MESSAGE: #{e.message}"
-    Process.exit
+loop do
+    jm.read_line
 end
