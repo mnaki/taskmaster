@@ -4,7 +4,7 @@ require 'scanf'
 
 config = [
     {
-        "name" => "date",
+        "name" => "hello",
         "fail_cooldown" => 2,
         "processes" => 1,
         "autostart" => true,
@@ -43,6 +43,7 @@ class Job
         @failures = 0
         @pid = nil
         @exit_status = nil
+        @state = nil
     end
 
     def is_running?
@@ -60,7 +61,7 @@ class Job
             false
         elsif @state == "terminated"
             true
-        elsif @state == "exit"
+        elsif @state == "exit" || @state == "exiting"
             true
         elsif @state == "started"
             @config["expected_status"].any? { |c| @exit_status == c }
@@ -99,8 +100,26 @@ class Job
         on_exit
     end
 
+    def restart
+        @state = "exiting"
+        @thread.exit if @thread
+        Process.kill(@config["exit_signal"], @pid) if !@pid.nil?
+        Thread.new do
+            begin
+                sleep @config["exit_timeout"] || 1
+                force_stop if is_running?
+                @state = "starting"
+                start
+            rescue Exception => e
+                puts "EXCEPTION: #{e.inspect}"
+                puts "MESSAGE: #{e.message}"
+                Process.exit
+            end
+        end
+    end
+
     def soft_stop
-        @state = "exit"
+        @state = "exiting"
         @thread.exit if @thread
         Process.kill(@config["exit_signal"], @pid) if !@pid.nil?
         Thread.new do
@@ -124,7 +143,7 @@ class Job
     end
 
     def to_s
-        "pid = #{@pid}\nfailures = #{@failures}\nexit_status = #{@exit_status}\n\n"
+        "pid = #{@pid}\nstate = #{@state}\nfailures = #{@failures}\nexit_status = #{@exit_status}\n\n"
     end
     
     def config_to_s
@@ -148,7 +167,7 @@ class Job
     end
     
     def on_exit
-        if @state != "terminated" && @state != "exit"
+        if @state != "terminated" && (@state != "exit" || @state != "exiting")
             @exit_status = $?.exitstatus
             @thread.exit
             if @state != "started"
