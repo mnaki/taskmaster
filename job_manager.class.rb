@@ -107,7 +107,15 @@ class JobManager
         @log.info "save_config"
         new_config = []
         @jobs.each do |name, processes|
-            new_config << processes.first.config
+            c = processes.first.config.clone
+            
+            if c["umask"].kind_of? String
+                # TODO
+            elsif c["umask"].kind_of? Numeric
+                c["umask"] = sprintf("0%o", c["umask"])
+            end
+            
+            new_config << c
         end
         File.open("config.yml", 'w') do |file|
             file.write(new_config.to_yaml)
