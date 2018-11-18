@@ -1,7 +1,6 @@
 #!/usr/bin/ruby
 
 require 'scanf'
-require 'pry' # TODO
 
 config = [
     {
