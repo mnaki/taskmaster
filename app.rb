@@ -214,8 +214,8 @@ class JobManager
             end
         end
 
-        @refresh = true
         @line = ""
+        @last_line = ""
     end
     
     def status
@@ -320,38 +320,14 @@ class JobManager
         end
     end
 
-    def print_status(force = false)
-        if @refresh || force
-            puts "\e[H\e[2J"
-            status
-
-            if @refresh
-                print "PRESS RETURN TO START TYPING\n"
-            else
-                print "START TYPING\n"
-            end
-            if @line.size >= 2
-                print "#> #{@line}"
-                if !@refresh
-                    print "\n#> "
-                else
-                    print "\n"
-                end
-            elsif !@refresh
-                print "#> #{@line}"
-            end
-        end
-    end
-
     def read_line
-        STDIN.gets
-        @line = ""
-        @refresh = false
-        print_status(true)
+        print '#> '
         @line = STDIN.gets&.chomp&.strip || ""
-        print_status(true)
+        if @line == "!!"
+            @line = @last_line
+        end
         process_line
-        @refresh = true
+        @last_line = @line if @line != "!!"
     end
 
     def process_line
@@ -373,6 +349,8 @@ class JobManager
             save_config
         when "reload"
             reload
+        when "status"
+            status
         else
           @line = "'#{@line}' is not a valid command"
         end
@@ -380,21 +358,6 @@ class JobManager
 end
 
 jm = JobManager.new(config)
-
-
-
-Thread.new do
-    begin
-        loop do
-            jm.print_status
-            sleep 0.5
-        end
-    rescue Exception => e
-        puts "EXCEPTION: #{e.inspect}"
-        puts "XXX MESSAGE: #{e.message}"
-        Process.exit
-    end
-end
 
 loop do
     jm.read_line
