@@ -1,6 +1,7 @@
 #!/usr/bin/ruby
 
 require 'scanf'
+require 'pry' # TODO
 
 config = [
     {
@@ -17,7 +18,7 @@ config = [
         "stdout" => "out",
         "start_minimum_time" => 0.5,
         "working_dir" => "/dev",
-        "umask" => 0777,
+        "umask" => "077",
         "env" => {
             "LOL" => "OK"
         }
@@ -36,12 +37,13 @@ class Job
 
     def initialize(config)
         @config = config
-        @failures = 0
 
-        @pid = nil
         @thread = nil
-        @exit_status = nil
         @process = nil
+
+        @failures = 0
+        @pid = nil
+        @exit_status = nil
     end
 
     def is_running?
@@ -90,7 +92,7 @@ class Job
             $stdout.reopen(@config["stdout"], "w") if @config["stdout"]
             $stderr.reopen(@config["stderr"], "w") if @config["stderr"]
             Dir.chdir(@config["working_dir"])
-            File.umask(@config["umask"])
+            File.umask(@config["umask"].to_i(8))
             exec("bash", "-c", @config["cmd"])
             exit(1)
         end
@@ -123,15 +125,15 @@ class Job
     end
 
     def to_s
-        sprintf("name \t\t%s\ncmd \t\t%s\npid \t\t%s\nfailures \t%d\nfail_cooldown \t%d\nexit_status \t%d\nstate \t\t%s\n",
-            @config["name"],
-            @config["cmd"],
-            @pid&.to_s || "N/A",
-            @failures.to_i,
-            @config["fail_cooldown"],
-            @exit_status.to_i,
-            @state.to_s
-        )
+        "pid = #{@pid}\nfailures = #{@failures}\nexit_status = #{@exit_status}\n\n"
+    end
+    
+    def config_to_s
+        str = config.map do |key, val|
+            "#{key} = #{val}"
+        end.join("\n")
+
+        sprintf("%s\n", str)
     end
 
     def should_restart?
@@ -194,8 +196,12 @@ class JobManager
     
     def status
         @jobs.each do |name, processes|
-            puts "\nJob: #{name}\n"
+            puts "[Job = #{name}]\n"
+            puts "\n# Config\n"
+            puts processes.first.config_to_s
+            puts "\n# Processes\n"
             puts processes.map(&:to_s)
+            puts "\n\n"
         end
     end
 
@@ -236,6 +242,12 @@ class JobManager
 
     def update_job(job_name = nil, config)
         each(job_name) { |p| p.config = config }
+    end
+
+    def set_config_var(job_name, var, val)
+        each(job_name) do |j|
+            j.config[var] = val
+        end
     end
 
     def scale_job(job_name, num)
@@ -297,7 +309,7 @@ class JobManager
     end
 
     def process_line
-        args = @line.chomp.strip.scanf('%s %s %s\n')
+        args = @line.chomp.strip.split " "
         case args[0]
         when "start"
             start_job(args[1])
@@ -313,6 +325,8 @@ class JobManager
             update_job(args[1], args[2])
         when "scale"
             scale_job(args[1], args[2].to_i)
+        when "set"
+            set_config_var(args[1], args[2], args[3])
         else
           @line = "'#{@line}' is not a valid command"
         end
