@@ -186,16 +186,10 @@ class JobManager
                 @jobs[c["name"]] << Job.new(c)
             end
         end
-        autostart_all
+        start_job
 
         @refresh = true
         @line = ""
-    end
-
-    def autostart_all
-        each do |p|
-            p.start
-        end
     end
     
     def status
@@ -244,6 +238,29 @@ class JobManager
         each(job_name) { |p| p.config = config }
     end
 
+    def scale_job(job_name, num)
+        
+        if num == 0
+            return
+        end
+
+        @jobs.each do |name, processes|
+            processes_to_remove = []
+            additional_process_num = num - processes.size
+
+            if additional_process_num > 0
+                additional_process_num.times do
+                    processes << Job.new(processes.first.config)
+                end
+            elsif additional_process_num < 0
+                processes_to_remove = processes.pop(-(additional_process_num))
+            end
+
+            processes_to_remove.each do |process|
+                process.force_stop
+            end
+        end
+    end
 
     def print_status(force = false)
         if @refresh || force
@@ -280,21 +297,22 @@ class JobManager
     end
 
     def process_line
-        cmd, name = @line.scanf('%s %s\n')
-        name = name&.chomp&.strip || ""
-        case cmd
+        args = @line.chomp.strip.scanf('%s %s %s\n')
+        case args[0]
         when "start"
-            start_job(name)
+            start_job(args[1])
         when "stop"
-            stop_job(name)
+            stop_job(args[1])
         when "kill"
-            force_stop_job(name)
+            force_stop_job(args[1])
         when "restart"
-            restart_job(name)
+            restart_job(args[1])
         when "update"
             puts "Unimplemented"
             exit
-            update_job(name)
+            update_job(args[1], args[2])
+        when "scale"
+            scale_job(args[1], args[2].to_i)
         else
           @line = "'#{@line}' is not a valid command"
         end
@@ -319,9 +337,9 @@ Thread.new do
 end
 
 begin
-loop do
-    jm.read_line
-end
+    loop do
+        jm.read_line
+    end
 rescue Exception => e
     puts "EXCEPTION: #{e.inspect}"
     puts "MESSAGE: #{e.message}"
