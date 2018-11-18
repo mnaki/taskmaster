@@ -108,6 +108,8 @@ class Job
         Process.wait(@pid)
         @log.info "Process finished"
         on_exit
+    rescue Exception => e
+        @log.error "Error #{e.message}"
     end
 
     def restart

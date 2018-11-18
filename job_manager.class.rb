@@ -7,17 +7,23 @@ class JobManager
         @log = Logger.new('log.txt') 
         @log.info "Initializing JobManager"
         @jobs = {}
+
         config.each do |c|
-            @log.info "Creating job #{c['name']}"
-            @jobs[c["name"]] = []
-            c["processes"].times do
-                @log.info "Adding new process to job #{c['name']}"
-                @jobs[c["name"]] << Job.new(c)
-            end
+            load_config(c)
         end
 
         @line = ""
         @last_line = ""
+    end
+
+    def load_config(c)
+        @log.info "Creating job #{c['name']}"
+        @jobs[c["name"]] = []
+        c["processes"].times do
+            @log.info "Adding new process to job #{c['name']}"
+            @jobs[c["name"]] << Job.new(c)
+        end
+        scale_job(c["name"], c["processes"])
     end
     
     def status
@@ -73,7 +79,8 @@ class JobManager
         @log.info "update_job #{job_name}"
         if @jobs[job_name].nil?
             @log.info "New job detected (#{job_name}). Adding..."
-            @jobs[job_name] = [Job.new(config)]
+            #@jobs[job_name] = [Job.new(config)]
+            load_config(config)
         else
             @log.info "Job already exists (#{job_name}). Updating according to changes..."
             each(job_name) do |p|
@@ -122,6 +129,8 @@ class JobManager
         if num == 0
             return
         end
+
+        set_config_var(job_name, "processes", num)
 
         @jobs.each do |name, processes|
             processes_to_remove = []
@@ -184,6 +193,8 @@ class JobManager
             @log.info "Invalid command"
             @line = "'#{@line}' is not a valid command"
         end
+    rescue Exception => e
+        @log.error "Error #{e.message}"
     end
 
 end
